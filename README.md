@@ -9,3 +9,5 @@
 [Week 2 - Introduction to OS: operations](https://github.com/jjaehwi/2023_OS/blob/main/Week_2/article.md)
 
 [Week 3 - Computer system architecture and Operation](https://github.com/jjaehwi/2023_OS/blob/main/Week_3/article.md)
+
+[Week 4 - Process : Concept, state transition](https://github.com/jjaehwi/2023_OS/blob/main/Week_4/article.md)
