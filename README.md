@@ -15,3 +15,5 @@
   - [Linux_Practice](https://github.com/jjaehwi/2023_OS/blob/main/Week_4/Linux_Practice.md)
 
 - [Week 5 - Process : IPC and concurrent process, Linux Practice: installation](https://github.com/jjaehwi/2023_OS/blob/main/Week_5/article.md)
+
+- [Week 6 - Thread : Concept and operation](https://github.com/jjaehwi/2023_OS/blob/main/Week_6/article.md)
