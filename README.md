@@ -20,6 +20,6 @@
 
   - OverView, Multicore Programming, Multithreading Models, Thread libraries
 
-- [Week 7 - Thread : Thread and multithread](https://github.com/jjaehwi/2023_OS/blob/main/Week_6/article.md#4-5-implicit-threading)
+- [Week 7 - Thread : Thread and multithread](https://github.com/jjaehwi/2023_OS/blob/main/Week_7/article.md)
 
   - Implicit Threading, Threading Issues, OS Examples
