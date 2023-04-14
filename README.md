@@ -17,3 +17,9 @@
 - [Week 5 - Process : IPC and concurrent process, Linux Practice: installation](https://github.com/jjaehwi/2023_OS/blob/main/Week_5/article.md)
 
 - [Week 6 - Thread : Concept and operation](https://github.com/jjaehwi/2023_OS/blob/main/Week_6/article.md)
+
+  - OverView, Multicore Programming, Multithreading Models, Thread libraries
+
+- [Week 7 - Thread : Thread and multithread](https://github.com/jjaehwi/2023_OS/blob/main/Week_7/article.md)
+
+  - Implicit Threading, Threading Issues, OS Examples
