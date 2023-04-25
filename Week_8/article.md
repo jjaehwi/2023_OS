@@ -48,6 +48,24 @@
 
 - [5-4. Thread Scheduling](#5-4-thread-scheduling)
 
+- [5-5. Multi - Processor Scheduling](#5-5-multi---processor-scheduling)
+
+  - [멀티프로세서 스케쥴링 접근법](#멀티프로세서-스케쥴링-접근법)
+
+  - [Multicore Processors](#multicore-processors)
+
+    - [Chip multithreading](#chip-multithreading-cmt)
+
+  - [Multithreaded cores](#multithreaded-cores)
+
+  - [Load Balancing](#load-balancing)
+
+  - [Processor Affinity + NUMA](#processor-affinity-numa)
+
+  - [Heterogeneous Multiprocessing (HMP)](#heterogeneous-multiprocessing-hmp)
+
+- [Summary](#summary)
+
 ---
 
 ## 5-1. Basic Concepts
@@ -499,3 +517,298 @@
     - `PTHREAD_SCOPE_SYSTEM`
 
 - 리눅스와 macOS 에서는 PTHREAD_SCOPE_SYSTEM 만 허용한다.
+
+---
+
+## 5-5. Multi - Processor Scheduling
+
+- `멀티프로세서 시스템`의 경우에는 스케쥴링이 더욱 복잡해진다.
+
+  1. 하나의 프로세서 칩 안에 멀티 코어 CPU 가 있는 경우 (`Multicore CPUs` : 칩 하나에 프로세스를 실행할 수 있는 코어가 여러개인 것)
+
+  2. 하나의 코어에서 여러 개의 스레드를 실행할 수 있는 경우 (`Multithreaded cores`)
+
+  3. `NUMA systems`
+
+  4. 동일한 종류의 프로세서가 아닌 서로 다른 종류의 프로세서 사이 멀티 프로세싱이 가능한 CPU (`Heterogeneous multiprocessing`)
+
+---
+
+### 멀티프로세서 스케쥴링 접근법
+
+- `Asymmetric multiprocessing`
+
+  - Master server (하나의 프로세싱 코어) : 모든 스케쥴링을 결정, I/O processing, 기타 다른 시스템 activities
+
+  - 나머지 코어들은 유저 코드를 실행하는 방식
+
+  - 스케쥴링은 마스터 서버에서만 이뤄지면 돼서 스케쥴링 자체는 간단하지만 마스터 서버에서 bottleneck 이 발생할 가능성이 있다.
+
+    - 코어에서 부하가 걸리지 않더라도 master server 때문에 부하가 걸려서 CPU 코어가 idle 이더라도 유저 코드가 실행되지 않을 수 있는 것.
+
+- `Symmetric multiprocessing (SMP)`
+
+  - 모든 프로세서가 자체적으로 스케쥴링한다. (`self - scheduling`)
+
+  - 앞서 본 싱글 프로세서를 위한 스케쥴링 알고리즘을 각 프로세서 별도 따로 적용될 수 있는 것
+
+  - 이 때 사용될 수 있는 전략 (2 가지)
+
+    1. 모든 스레드를 하나의 **공통된 (common) ready queue** 에 둬서 각 코어에 스레드를 할당하는 방식
+
+    - race condition 이 발생할 가능성이 있다.
+
+    2. 각 프로세서가 자기만의 **private queue** 를 가지고 있어서 private queue 에 대해서만 스케쥴링을 진행
+
+    - 특정 큐에 많은 스레드가 존재하거나, 각 스레드가 CPU intensive 한 경우 해당 코어는 바쁘게 동작해야하지만 다른 코어는 놀고 있을 수 있는 코어 간 `load balancing` 문제가 발생할 수 있다.
+
+<img width="533" alt="스크린샷 2023-04-26 오전 1 06 01" src="https://user-images.githubusercontent.com/87372606/234336880-604e75d8-7475-4861-8361-521bda01e5d9.png">
+
+---
+
+### Multicore Processors
+
+- `멀티 코어는 하나의 프로세스 칩 안에 여러 개의 코어가 있는 경우`이다.
+
+  - 각각의 코어들이 스레드를 별도로 실행시킬 수 있다.
+
+- 멀티 코어를 갖는 SMP system : faster and consuming **less power**
+
+  - 멀티 칩 프로세서에 비해 빠르고 더 작은 파워를 사용한다.
+
+  - 프로세서가 메모리에 접근할 때, 직접 메인 메모리에 접근하면 `memory stall` 이 발생한다.
+
+    - **`cache miss` 가 발생할 때 나타나는 현상**
+
+    - 프로세서에 비해 메모리가 속도가 느리기 때문에 프로세서가 메인 메모리 D램 에 직접 접근하게 되면 오랫동안 기다려야한다.
+
+    - 메모리에 접근할 경우, 메모리에 요청을 하고 데이터가 나오기 까지 긴 사이클을 기다려야 하는 것
+
+    - 데이터를 읽어와서 내부에서 처리할 땐 compute cycle
+
+    - **cache hit 해서 cache 에서 데이터를 읽어오는 경우 memory stall 은 발생하지 않는다.** (cache hit rate : 90% ~ 95%)
+
+  - `multithreaded processing cores` : **기존 코어들은 하나의 스레드가 할당되면 하나만 처리가 가능**했는데 (하나의 스레드에 대해 레지스터를 할당하고 program counter 값을 그 스레드를 위해 사용하는 것), 하나의 코어 안에 연산기만 공유하고 레지스터나 pc 를 여러 set 를 두면 **스레드 여러 개가 각각의 하드웨어 유닛을 사용하여 하나의 코어에서 여러 스레드가 동시에 실행**되도록 할 수 있다.
+
+    - memory stall 이 발생했을 때는 연산기를 사용하고 있지 않기 때문에, 다른 스레드에 compute cycle 을 진행하여 연산기를 사용할 수 있도록 한다.
+
+    - 레지스터와 pc 값은 각 스레드에 별도로 할당되어있어서, 값이 사라질 필요 없고 스레드 간 context switching 이 필요하지 않다.
+
+    - 이런 방식을 `chip multithreading (CMT)` 라고 한다.
+
+<img width="533" alt="스크린샷 2023-04-26 오전 1 14 28" src="https://user-images.githubusercontent.com/87372606/234338861-a66a0703-7a28-44fc-82cd-212b16a3862a.png">
+
+<img width="592" alt="스크린샷 2023-04-26 오전 1 20 50" src="https://user-images.githubusercontent.com/87372606/234340365-53ccd29b-4eab-4130-b8d4-89e9e2b5b273.png">
+
+---
+
+### Chip multithreading (CMT)
+
+<img width="463" alt="스크린샷 2023-04-26 오전 1 26 54" src="https://user-images.githubusercontent.com/87372606/234341826-61c50609-b478-4e28-8497-a55234a723f2.png">
+
+- 하드웨어 적으로 **구조가 여러 개의 스레드를 실행할 수 있도록 되어있는 것.** (**_프로세서는 하드웨어 threading 을 위한 것만 추가되어있다. 연산기 같은 것은 공유가 되고 register 와 pc 같은 최소한의 것들만 추가되는 것_**)
+
+- `Intel` : hyper - threading (aka simultaneous multithreading or SMT) 이라고 부름
+
+  - 코어 당 2 개의 스레드를 실행할 수 있도록 되어있다. (2 threads per core)
+
+- Oracle Sparc M7 (8 개의 코어) : 8 threads per core
+
+  - OS 입장에서는 64 개 (8 x 8) 의 logical cores 가 있다고 인식해여 스케쥴링을 진행할 때, 64 개의 threads 를 할당한다.
+
+<img width="463" alt="스크린샷 2023-04-26 오전 1 28 40" src="https://user-images.githubusercontent.com/87372606/234342252-f27447e2-4b83-4eb0-80eb-da4d33d9cfb0.png">
+
+- 예시
+
+```
+AMD Ryzen^TM 9 5950X
+
+CPU 코어 수 : 16
+스레드 수 : 32              // 코어 하나당 2 개의 스레드를 실행할 수 있도록 하드웨어 구조가 되어있는 것
+최대 부스트 클럭 : 최대 4.9GHz // 코어를 특정 제한하여 그 내에서 사용할 경우 최대 4.9GHz 까지 동작 주파수를 끌어올려서 CPU 성능을 올릴 수 있다.
+기본 클럭 : 3.4GHz          // 모든 코어를 사용할 때는 3.4GHz 로 동작
+총 L2 캐시 : 8MB            // 모든 코어는 자체적인 L1 캐시를 갖고 있고 보통 1MB 이내 사이즈, L2 캐시는 코어 바깥에 있는 캐시로 모든 코어들이 공유하고 있는 캐시, 이 캐시를 통해 프로세서 내 각 코어들이 데이터를 공유할 수 있다.
+총 L3 캐시 : 16MB           // L3 캐시는 하나의 반도체 실리콘 칩이 아니라 여러 개의 실리콘 칩이 있을 때, 하나의 큰 칩 안에 캐시를 둬서 이 칩들 사이의 데이터를 공유할 때 사용하는 것
+                          // (라이젠 칩 안의 여러 개의 실리콘 칩과 L3 캐시 (multichip packaging 방식), 여러 개의 칩 안에 L2 캐시와 코어들, 코어 안에 L1 캐시와 연산기)
+기본 TDP/TDP : 105W        // CPU 가 실행되면서 소모할 수 있는 파워 105W 인 것 --> 따라서 모든 코어를 사용할 때 3.4GHz 까지만 동작하는 것
+Processor Technology for CPU cores : TSMC 7nm FinFET // 프로세서의 제조는 TSMC 7nm FinFET 방식을 사용했다는 것
+```
+
+- 멀티 칩 패키징 방식
+
+<img width="318" alt="스크린샷 2023-04-26 오전 1 41 02" src="https://user-images.githubusercontent.com/87372606/234345279-341dc40e-340e-4655-8afd-d7e52c6dc92d.png">
+
+---
+
+### Multithreaded cores
+
+- Multicore Processors 에서 Multithreading 할 수 있는 core 의 경우 두 가지 접근 방식
+
+  1. `Coarse - grained` 방식 : 한 쪽의 스레드가 long - latency event 가 발생할 때까지 해당 스레드를 계속 실행시키는 것.
+
+  - long - latency event 가 발생해서 실행 못하게 되면 (해당 스레드는 waiting 상태로 가는 것, memory stall 도 마찬가지) `thread switching` 을 진행한다.
+
+  - 다른 스레드가 해당 코어에서 실행되는 것
+
+  - long - latency 가 일어날 때까지 pipeline 형식인데, thread switching 이 일어나면 그 만큼 다시 채우는 `Pipeline flushing` 을 통해 그 지점까지 가야한다.
+
+  - Pipeline flusing 이 일어나고 다시 채우는 사이클 만큼 공백이 발생한다. (high cost of thread switching)
+
+    - context switching 은 PCB 에 필요한 정보를 저장하고 CPU 코어 안에서 해당 스레드를 몰아내고 다른 스레드가 들어오는 것 (cost 가 훨씬 높음)
+
+    - Pipeline flusing 에 의한 thread switching 은 코어 안에 이미 스레드 0 과 1 이 존재하고 하드웨어 내부에서 스레드 0 의 instruction 을 실행하다가 스레드 1 의 instruction 으로 실행하도록 바꾸는 방식
+
+  2. `Fine - grained` 방식 (interleaved) : 명령어 cycle 의 boundary 안에서 thread switching 이 일어남
+
+  - 명령어가 실행되는 단계에 해당하는 하드웨어가 별도로 제공되어야한다.
+
+  - Pipeline flushing 을 하지 않는다. switching 이 필요하면 멈춰있는 그 상태로 명령어가 실행되는 하드웨어로 가고, 그 부분에서부터 다른 스레드가 시작할 수 있게 한다.
+
+  - cost 가 적다. 추가적인 하드웨어가 내부적으로 필요하기 때문에 (extra logic) 코어의 사이즈가 커질 수 있다.
+
+- **`multiple thread 가 프로세스 코어 안에 있지만 concurrent 하게 실행되지만 parallel 하진 않다.`**
+
+  - **연산기 하나 (실행을 위한 하드웨어) 를 공유하기 때문**에 두 스레드의 명령어를 동시에 실행하진 않는 것 (**sharing hardware for execution**)
+
+- 하나의 프로세싱 코어 안에서 멀티 스레딩을 할 경우 `two level 의 스케쥴링`이 일어난다.
+
+  - level 1
+
+    - hardware threads : 프로세스 코어 안에 있는 멀티 스레드를 지원하는 기능 : `OS 입장에서 logical CPU 로 보인다.`
+
+    - OS 는 커널 스레드를 logical CPU 에 할당한다. (many - to - many 같은 스케쥴링이 이뤄지는 것)
+
+  - level 2
+
+    - 하드웨어 내부에서는 하드웨어 스케쥴러가 내부에 할당된 스레드에 대해 실제 프로세싱 코어를 어느 스레드에 할당할지 스케쥴이 결정된다.
+
+    - 동시에 실행되어야하는 스레드의 경우 서로 다른 코어에 할당을 해주고, 그럴 필요가 없으면 같은 코어에 할당하는 방식으로 스케쥴링을 할 수 있다. (sharing - aware algorithm)
+
+<img width="514" alt="스크린샷 2023-04-26 오전 2 15 48" src="https://user-images.githubusercontent.com/87372606/234352874-0f2ab1ad-a64e-4408-bd5b-24df7faf1208.png">
+
+---
+
+### Load Balancing
+
+- Load Balancing 은 모든 프로세스에 걸쳐 workload 를 균등하게 distribute 하도록 하는 것
+
+- 두 가지 접근법
+
+  1. `Push migration` : 정기적으로 각 프로세서의 load 를 checking 해서 만약 특정한 프로세스 코어에 workload 가 많다면 workload 가 적은 쪽으로 옮기는 방식
+
+  - queue 에 있는 모든 task 들을 monitoring 해야하는 부담이 있지만, 가장 적절히 load balancing 가능
+
+  2. `Pull migration` : 프로세스 자체가 자신이 idle 하게 되면 다른 프로세서 코어에 있는 queue 를 보고 대기하고 있는 task 를 가져와서 자기가 실행하는 것
+
+  - idle 한 프로세서가 대기하고 있는 task 를 가져오기 때문에 load balancing 의 효과는 push 보다 안좋다.
+
+  - 두 방식이 mutually exclusive 하지 않다. (ex) Linux CFS scheduler, FreeBSD ULE scheduler
+
+- `Balanced load`
+
+  1. 모든 queue 의 스레드 수 를 비슷하게 유지하는 것
+
+  2. 모든 queue 에 걸쳐 thread priorities 를 동등하게 distribution
+
+---
+
+### Processor Affinity (NUMA)
+
+- 코어에는 캐시가 붙어 있는데 캐시에는 스레드가 실행하는 코드에서 자주 사용하는 데이터들이 들어가 있다. 혼자 사용할 경우 큰 cache hit rate 를 가져갈 수 있지만,
+
+- 여러 개의 스레드가 코어를 번갈아가며 사용할 경우, 각 스레드가 사용하는 데이터가 다를 수 있고 캐시는 용량 제한이 있기 때문에 각 스레드가 실행될 때 캐시는 지워지고 다시 써지는 비효율적으로 운용될 수 있다.
+
+- `warm cache` : 어떤 프로세스나 스레드가 자신이 가져온 데이터를 캐시에 유지하면서 cache hit rete 를 충분히 유지하는 것
+
+  - warm cache 의 장점을 활용하기 위해서는 스레드가 계속해서 같은 프로세서에서 실행되어야하는 것이 유리하다.
+
+  - 만약 스레드가 다른 코어로 옮겨가게 되면 그 캐시를 채울 때까지 memory stall 을 경험해야한다.
+
+- `Processor Affinity` : **하나의 스레드를 동일한 프로세서 에서 계속해서 실행하려고 하는 것**
+
+  - cache miss 를 덜 발생시키기 위함
+
+  - common queue 를 사용하는 것이 아니라, 코어 마다 별도의 ready queue 를 갖는 경우 구현이 쉽다.
+
+- 두 가지 형태
+
+  1. `Soft affinity` : 프로세스가 동일한 프로세서에서 실행되려고 최대한 노력하지만 **guaranteed 되진 않는다**. (load balancing 과 같은 이유)
+
+  2. `Hard affinity` : system call 을 이용하여 **어떤 프로세스를 실행할 수 있는 프로세서의 집합을 정해놓고 그 안에서만 실행될 수 있도록** 하는 것.
+
+  - Linux : soft affinity (default), hard affinity (using sched_setaffinity() system call)
+
+- `non - uniform memory access (NUMA)` : 일반적인 프로세서 구조는 메모리가 가운데 있어서 다같이 공유하는 방식이지만, **NUMA 는 CPU 에 전용 메모리가 존재하고 CPU 와 메모리를 구성하는 시스템 사이를 interconnect 로 연결**했다.
+
+  - 각 CPU 는 모든 메모리에 접근할 수 있다. (자기 구역의 메모리는 fast access, 다른 구역의 메모리는 slow access)
+
+  - NUMA - aware 알고리즘 : NUMA 구조임을 미리 알고, 프로세스나 스레드가 실제 있는 메모리와 가까운 CPU 에 스케쥴링 해서 전체적인 성능을 향상시킨는 것.
+
+<img width="640" alt="스크린샷 2023-04-26 오전 2 31 59" src="https://user-images.githubusercontent.com/87372606/234356477-0b0f2bd8-f87f-4ead-8f52-f26791db900d.png">
+
+- **load balancing 과 processor affinity 는 서로 역작용한다. (Counteraction)**
+
+  - 적절한 tradeoff
+
+---
+
+### Heterogeneous Multiprocessing (HMP)
+
+- 앞서 다룬 멀티 프로세서에 대한 내용은 모든 프로세서는 동일한 성능을 갖는다는 가정하에 배웠지만, **요즘 프로세서들은 내부적 CPU 코어의 명령어는 동일하지만 성능은 동일하지 않은 코어를 섞어서 구성**하는 경우가 많다.
+
+- (ex) ARM's bif.LITTLE 구조, Intel's hybrid technology (P/E core) 구조
+
+  - P, BIG : 성능이 뛰어난 코어
+
+    - interactive tasks (일정한 시간에 결과가 나와야하는 작업), high performance and short burst tasks (높은 성능이 요구되고 빠른 시간에 끝내야하는 작업)
+
+    - 이런 작업이 필요없는 경우 **disabled 시켜서 power - saving mode**
+
+    - 전력을 많이 소모하더라도 빠른 성능이 중요
+
+  - E, LITTLE : 성능은 뛰어나지 않지만 전력소모가 적은 코어
+
+    - low performance or long task (긴 시간에 끝내도 되고 낮은 성능으로도 끝낼 수 있는 작업), background jobs
+
+    - 낮은 성능이더라도 더 작은 전력을 소모하도록 설계됨
+
+```
+Qualcomm SD8Gen2 : 1 x Cortex-X3 (성능이 젤 좋음) + 2 x Cortex-A715 + 2 x Cortex-A710 + 3 x Cortex-A510
+Intel i9 13900k : 8P + 16E
+```
+
+---
+
+## Summary
+
+- CPU scheduling : ready queue 에서 대기중인 프로세스를 선택해서 dispatcher 를 이용하여 CPU 에 할당하는 작업
+
+- Scheduling algorithms
+
+  - preemptive 방식 과 non - preemptive 방식
+
+  - Evaluating criteria
+
+    (1) CPU utilization, (2) throughput, (3) turnaround time, (4) waiting time, (5) response time
+
+  - FCFS : simplest, not efficient for waiting time
+
+  - SJF : optimal for waiting time, 구현 어렵
+
+  - RR : preemption 방식으로 동작, time quantum, 가장 짧은 response time
+
+  - Priority : priority 를 주고 highest priority first
+
+  - Multilevel queue : multiple queue 에 여러 프로세스를 넣어서 priority (다른 알고리즘 가능) 에 의해 지정하고, 각 큐에서의 스케쥴링 알고리즘을 지정 (queue 사이 이동 x)
+
+  - Multilevel feedback queues : process migration between queues (queue 사이 이동 가능), 가장 일반적인 방식
+
+    - 앞선 방식들은 Multilevel feedback queues scheduling 의 특별한 경우들임
+
+- Multicore processors with multiple hardware threads (logical CPUs)
+
+  - 멀티코어 프로세서의 경우 multiple hardware 스레드를 가질 수 있다.
+
+  - 하나의 코어 안에 하드웨어 스레드가 여러 개 있으면 OS 커널은 각각을 logical CPU 로 보고 여기에 스레드를 할당하는 스케쥴을 진행
+
+  - 멀티 프로세서에 대해 스케쥴링을 진행할 경우 load balancing 과 processor affinity 를 고려해야함
