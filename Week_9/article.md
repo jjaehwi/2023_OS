@@ -889,3 +889,33 @@ x.signal(); // release a suspended process. No effect without any waiting proces
 ---
 
 ## Summary
+
+- `Race condition` : 프로세스의 명령어들이 수행되는 과정에서 실행 순서에 따라 서로 다른 결과를 나타내는 경우
+
+  - shared data 의 값이 의도치 않게 바뀔 수 있기 때문
+
+- `Critical section` : shared data 를 갖고 있는 영역, possible race condition
+
+- `A solution to the critical section problem`
+
+  1. mutual exclusion
+
+  2. progress
+
+  3. bounded waiting
+
+- 세 가지 조건을 만족하는 software solutions : `Peterson's solution`
+
+- `Hardware support` for the critical section problem
+
+  1. memory barriers
+
+  2. hardware instructions (CAS and atomic variables)
+
+- `Mutex lock` : mutual exclusion 에 충실한 방법, acquire a lock
+
+- `Semaphores` : mutual exclusion, integer value
+
+- `Monitor` : high - level form of process synchronization. condition variables
+
+---
