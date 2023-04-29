@@ -27,3 +27,11 @@
 - [Week 8 - CPU scheduling : Process scheduling algorithm](https://github.com/jjaehwi/2023_OS/blob/main/Week_8/article.md)
 
   - Process scheduling algorithm
+
+- [Week 9 - Synchronization, mutex, semaphore](https://github.com/jjaehwi/2023_OS/blob/main/Week_9/article.md)
+
+  - Critical section problem, Peterson solution
+
+  - Hardware support
+
+  - Synchronization Tools (Mutex lock, Semaphore, Monitor)
