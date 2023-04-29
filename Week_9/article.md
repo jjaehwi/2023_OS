@@ -42,6 +42,18 @@
 
 - [6-5. Mutex Locks](#6-5-mutex-locks)
 
+- [6-6. Semaphores](#6-6-semaphores)
+
+  - [Semaphore Usage](#semaphore-usage)
+
+  - [Semaphore Implementation](#semaphore-implementation)
+
+- [6-7. Monitors](#6-7-monitors)
+
+  - [Monitor Usage](#monitor-usage)
+
+- [Summary](#summary)
+
 ---
 
 ## 6-1. Background
@@ -571,3 +583,309 @@ void increment(atomic_int *v){
 ---
 
 ## 6-5. Mutex Locks
+
+- 일반적으로 hardware 기반의 synchronization 솔루션들은 복잡할 뿐만아니라 응용프로그래머가 접근할 수 없는 경우가 많다.
+
+- `Mutex (mutual exclusion) lock` : higher - level software tools 중 가장 간단하다.
+
+  - **critical section 을 보호하면서 race condition 이 발생하는 것을 막는다.**
+
+  - lock 을 획득하여 critical section 에 접근하고 critical section 실행이 끝나면 lock 을 release 하고 remainder section 을 실행한다.
+
+```
+while (true){
+  acquire lock
+    critical section
+  release lock
+    remainder section
+}
+
+// acquire() 는 lock 이 available 하지 않으면 while 에서 기다리면서 CPU 를 사용하면서 기다린다.
+// available 이 true 가 되면 while 을 빠져나오면서 다시 available 을 false 로 만들어놓는다.
+// available 이 true 가 되는 것은 lock 을 획득한 것이고, 다시 available 을 false 로 만들어서 다른 프로세스가 lock 을 획득하지 못하도록 하는 것
+acquire(){
+  while(!available)
+    ; /* busy wait */
+  available = false;
+}
+
+// release() 는 available 을 true 로 만들고 나오면 대기하고 있던 다른 프로세스가 while 을 탈출하면서 lock 을 획득할 수 있게 된다.
+release(){
+  available = true;
+}
+```
+
+- lock 을 획득하기 위해 acquire() 를 호출하거나 빠져나올 떄 release() 함수를 호출하는데 이 함수들은 `atomically 하게 실행`되어야한다.
+
+  - **다른 함수가 available 에 접근해서 값을 바꿀 수 없어야한다.**
+
+- acquire 함수를 실행할 때 `busy waiting` 을 하게 된다.
+
+  - while 루프 안에서 계속적으로 루프 내부를 돌고 있기 때문에 `프로세스가 아무것도 안하고 있지만 CPU 를 점유하고 있게 되는 문제`가 있다.
+
+  - `Spinlock` : the processes "spins" while waiting
+
+  - wait 하는 동안 **context switch 가 발생하지 않기 때문에 멀티코어 시스템에선 많이 사용**된다.
+
+---
+
+## 6-6. Semaphores
+
+- `Semaphores` : 정교한 방법으로 동기화를 하는 강력한 tool (more robust tool for synchronization in more sophisticated ways)
+
+  - mutex lock 과 유사해보이지만 훨씬 강력하고 Dijkstra 가 개발했다.
+
+- **_Semaphore S_**
+
+  - `integer variable` : `wait()` 와 `signal()` 이라는 atomic operations 에 의해 access 가 가능한 변수
+
+  - `wait()` : called P (from proberen, "to test")
+
+  - `signal()` : called V (from verhogen, "to increment")
+
+```
+wait(S){
+  while (S<=0)
+    ; // busy wait
+  S--;
+}
+
+signal(S){
+  S++;
+}
+```
+
+- `wait 함수`
+
+  - 세마포어를 가지고 세마포어가 0 보다 작거나 같은 경우 busy wait 를 진행하고 0 보다 커지면 빠져나와서 S 를 감소시키고 wait 를 빠져나온다.
+
+  - 빠져나오면서 S 를 감소시키면서 나와서, 다른 프로세스가 접근하면 다시 while 루프를 돌게된다.
+
+  - `처음 접근한 프로세스만 while 루프를 빠져나와서 S--`를 할 수 있다.
+
+- `signal 함수는 단순히 S 를 증가`시키는 것
+
+  - 어떤 프로세스가 critical section 을 빠져나가면서 S 를 증가시키면 S 에 가장 먼저 접근한 프로세스는 S 가 0 이었을 때 증가됐으므로 S = 1 로 while 을 탈출하고 다시 S-- 를 한다.
+
+- `세마포어와 관련된 모든 modifications 동작은 atomic 하게 동작 해야한다.`
+
+  - Atomic execution on all modifications of the semaphore
+
+  - wait() : S<=0 (S 값 비교할 때) and S-- (S 값 감소시킬 때) atomic 하게 진행되어야함.
+
+---
+
+### Semaphore Usage
+
+1. Counting semaphore : 제한이 없는 도메인 (over an unrestricted domain)
+
+- 세마포어가 integer 값을 가진다. (-2, -1, 0, 1, 2 ...)
+
+- (ex) 유한한 숫자의 리소스에 대해 control 할 때 사용 (to control access to a given resource consisting of a finite number of instances)
+
+  - wait() : 0 이 될 때 까지 decrementing 하고 0 이 되면 resource blocked 해서 다른 프로세스가 리소스에 접근할 수 없다.
+
+  - signal() : 프로세스가 리소스를 release 할 때마다 incrementing the count
+
+- (ex) 동시에 concurrent 하게 실행되는 S1 state 를 가진 프로세스 P1 과 S2 state 를 가진 P2 에 대해
+
+  - S1 이 실행되고 S2 가 실행되어야하는 경우 (S1 의 결과를 S2 가 사용하는 경우)
+
+  - synch 가 0 보다 커야 빠져나와서 S2 가 실행되므로 P1 프로세스 signal 을 하고 P2 프로세스에 wait 를 한다.
+
+```
+// P1
+S1;
+signal(synch); // S1 을 실행하고 signal 을 한다.
+
+// P2
+wait(synch); // 실행안되고 기다리고 있다.
+// S1 다음 signal 이 되기 때문에 S1 다음 값이 증가해서 wait 를 빠져나오면 S2 가 실행될 수 있다.
+S2;
+```
+
+2. Binary semaphore
+
+- 0 과 1 만 사용하는 방식
+
+- mutex lock 과 비슷하게 동작한다.
+
+---
+
+### Semaphore Implementation
+
+- `busy waiting 을 막기 위해 wait() 와 signal() 을 modified`
+
+- waiting process 는 세마포어와 연관된 waiting queue 로 suspended --> **waiting state**
+
+  - 세마포어와 연관되어 `critical section 으로 진입하기 위해 대기`하고 있는 것
+
+  - 프로세스가 세마포어의 list 에 추가가 되고 빠져나올 때는 세마포어의 list 를 업데이트해서 제거한다.
+
+  - **_waiting list 에 프로세스가 들어갔다가 나오는 방식으로 동작하면서 busy wait 를 해결한다._**
+
+- signal operation 에 의해 세마포어 값이 증가되면 restarted
+
+  - waiting 상태에서 ready 상태가 될 수 있다.
+
+  - **waiting 상태의 프로세스는 무조건 ready 상태가 되었다가 running 상태로 간다.**
+
+- 세마포어의 변수인 s->value 는 음수가 될 수 있다.
+
+  - 음수인 것은 해당 세마포어에 대해 대기하고 있는 프로세스의 숫자가 1개 이상보다 더 많다.
+
+  - 대기하고 있는 프로세스의 수가 증가할 수록 세마포어의 값은 계속 감소한다.
+
+  - 몇 개의 프로세스가 대기하고 있는지 알 수 있다.
+
+- `wait() 와 signal() 은 atomic execution`
+
+  - **모든 코어에 대해 interrupt 를 disable**
+
+  - **compare_and_swap()** 이나 **spinlocks 방식을 제공**해야한다.
+
+```
+// 세마포어 구조체 정의
+typedef struct {
+  int value;
+  struct process *list; // waiting state 에 있는 프로세스를 담는 리스트
+} semaphore;
+
+// wait 함수
+wait(semaphore *S){
+  S -> value--; // value decrement
+  if (S->value < 0){
+    add this process to S -> list;
+    sleep(); // 세마포어를 waiting 상태로 보내는 것, Semaphore waiting queue
+    // waiting state 에 있는 모든 프로세스는 list 에 추가된다.
+  }
+}
+
+// signal 함수
+signal (semaphore *S){
+  S -> value++;
+  // S 가 0 보다 작거나 같다는 것은 대기하고 있는 프로세스가 있다는 것
+  if(S -> value <= 0){
+    // P 를 정할 수 있는데 여기서 우선 순위를 주는 policy 를 정할 수 있다.
+    remove a process P from S -> list; // list 에서 프로세스 하나 제거
+    wakeup(P);  // list 에서 제거된 프로세스를 wait 에서 ready 로 보내는 것
+  }
+}
+```
+
+- **list 에 추가하고 sleep() 으로 보냄으로써 (waiting 상태로) busy wait 발생을 해결한 것이다.**
+
+---
+
+## 6-7. Monitors
+
+- synchronization problem due to programming errors (룰을 지키지 않아서 정상 동작하지 않은 것)
+
+  - critical section 에 동시접근하는 문제가 발생
+
+    - `race condition` 발생
+
+  - `permanent blocking` 발생 : 접근이 아예 막혀버리는 경우
+
+```
+// 1. 동시에 접근이 되는 경우 : signal 을 먼저 하고 wait 를 하면 critical section 에 무조건 접근이 가능하다.
+// wait 와 signal 을 통해 entry 와 exit 하는 프로세스가 또 있는 경우 동시에 접근이 되면서 충돌이 발생한다.
+signal(mutex);
+...
+critical section
+...
+wait(mutex);
+
+// 2. 동시에 접근이 되는 경우 : 무조건 critical section 에 접근하고 signal 을 하면 다른 프로세스도 critical section 에 접근이 가능하다.
+// 다른 프로세스가 critical section 에 접근 중일 때 본인이 들어가서 충돌하고 signal 을 해서 다른 프로세스가 접근을 못하게 될 수 있다.
+// 다른 프로세스가 접근할 수 없을 때, signal 이 되면 접근할 수 있게되어 동시 접근이 될 수 있다.
+...
+critical section
+...
+signal(mutex);
+
+// 3. 접근을 못하게 되는 경우 : wait 로 critical section 에 진입했는데 나오면서 또 wait 를 하면 mutex 를 풀어주지 않고 또 - 가 된다.
+wait(mutex);
+...
+critical section
+...
+wait(mutex);
+
+// 4. 접근을 못하게 되는 경우 : 나올 떄 signal 함수를 실행하지 않는 경우 : 세마포어 값이 증가하지 않고, 뮤텍스 lock 이 풀어지지 않는다.
+wait(mutex);
+...
+critical section
+...
+```
+
+- 이러한 프로그래밍 에러에 의해 발생하는 문제를 해결하는 방법은 `synchronization tools 를 high - level language 의 construct 로 만들어서 사용`하는 것
+
+  - `Monitor` 가 이런 방법 중 하나이다.
+
+---
+
+### Monitor Usage
+
+- `monitor type` : **abstract data type (ADT)**
+
+  - **프로그래머가 정의한 operations set 을 포함**한다.
+
+  - **mutual exclusion 을 할 수 있는 방법이 제공**된다.
+
+  - declares the variables : 타입의 instance 의 state 를 정의
+
+    - variables 에 대해 동작하는 body 가 존재
+
+  - 다양한 프로세스가 모니터 안의 변수나 함수에 대해 직접적인 접근을 할 수 있다.
+
+    - monitor 내부에서만 local 하게 동작
+
+<img width="280" alt="스크린샷 2023-04-29 오후 7 40 23" src="https://user-images.githubusercontent.com/87372606/235298457-5d76f332-4e06-400b-ba0a-9762313db654.png">
+
+<img width="307" alt="스크린샷 2023-04-29 오후 7 38 36" src="https://user-images.githubusercontent.com/87372606/235298414-00069735-d421-4410-be51-63a6f0879589.png">
+
+- monitor 가 있으면 하나의 프로세스가 접근해서 shared data 나 initialization code 를 통해 프로세스가 해야되는 다양한 function 들을 실행하고 이 동작을 다른 프로세스들은 밖에서 기다리고 있다가 자기 차례가 됐을 때, monitor 안으로 들어와서 실행한다.
+
+  - `한번에 하나의 프로세스만 monitor 안에서 활성화` 된다. (Only one process at a time is active within a monitor)
+
+  - **critical section 에 대해 race condition 이 발생하는 것을 막는다.**
+
+  - synchronization schemes 에 따라 모델링을 할 때, 원하는 모든 기능을 포함시키기 어렵다.
+
+    - `synchronization 에만 중점`을 둬서 만든 type 이기 때문에 실질적으로 각 프로세스의 성능을 최대로 끌어올리기에는 부족하다.
+
+---
+
+- 맞춤형 synchronization 을 위해 `condition construct` 를 만들었다.
+
+  - condition x 나 y 에 대해 synchronization 을 할 수 있다.
+
+  - wait 와 signal 함수를 invoke
+
+  - x 에 대해 어떤 조건이 만족했을 때, x.wait 를 해서 프로세스를 suspend
+
+  - 이후 signal 을 통해 suspend 된 프로세스를 release
+
+```
+condition x, y;
+x.wait();    // process is suspended
+x.signal(); // release a suspended process. No effect without any waiting process
+```
+
+- **세마포어에서는 signal 을 하면 어떤 식으로든 세마포어에 영향을 미치는데**, condition 을 이용한 monitor 에서의 signal 함수는 **대기하고 있는 프로세스 (waiting process) 가 없으면 signal 함수를 실행하지 않은 것처럼 영향을 주지 않는다.**
+
+- (ex) Q: suspended, P: x.signal() --> Q is resumed 될 때 2 가지 가능성
+
+  1. signal and wait : P 가 x.signal 을 통해 release 됐지만 Q 가 resumed 되고 monitor 를 떠날 때까지 기다리거나, another condition 을 기다린다.
+
+  - P either waits until Q leaves the monitor or waits for another condition
+
+  2. signal and continue : P 가 signal 을 통해 release 됐지만 P 가 계속 어떤 행동을 취해서 monitor 에 머물러 있는 경우 Q 는 resume 했지만 P 가 monitor 를 떠날 때까지 기다리거나, another condition 을 기다린다.
+
+  - Q either waits until P leaves the monitor or waits for another condition
+
+  - P 가 signal 하고 나서 어떤 행동을 하냐에 따라 1, 2 상황이 발생할 수 있다.
+
+---
+
+## Summary
