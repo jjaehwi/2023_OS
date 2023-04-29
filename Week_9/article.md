@@ -32,6 +32,16 @@
 
   - [Reordering 상황에서 peterson's solution](#reordering-상황에서-petersons-solution)
 
+- [6-4. Hardware Support for Synchronization](#6-4-hardware-support-for-synchronization)
+
+  - [Memory Barriers](#memory-barriers)
+
+  - [Hardware Instructions](#hardware-instructions)
+
+  - [Atomic Variables](#atomic-variables)
+
+- [6-5. Mutex Locks](#6-5-mutex-locks)
+
 ---
 
 ## 6-1. Background
@@ -305,3 +315,259 @@ Reordering in thread 1 : 0 or 100
 <img width="874" alt="스크린샷 2023-04-28 오전 2 42 48" src="https://user-images.githubusercontent.com/87372606/234947301-0dcdd4ed-394b-4b9a-aa39-1c2fda954f5f.png">
 
 - reordering 상황이 발생하면 동시에 critical section 에 접근하는 상황이 생기고 Peterson's solution 을 통해 synchronization 을 해결할 수 없게 된다.
+
+---
+
+## 6-4. Hardware Support for Synchronization
+
+- SW 기반의 솔루션은 현대의 컴퓨터 구조에서 동작을 제대로 하지 않는 경우가 있어서 동기화를 위해 HW 적인 support 가 필요하다.
+
+  - `Memory Barriers`
+
+  - `Hardware Instructions`
+
+  - `Atomic Variables`
+
+---
+
+### Memory Barriers
+
+- 메모리 모델의 종류
+
+  - `Strongly ordered` : 하나의 프로세서가 메모리의 내용을 변경하면 다른 모든 프로세서가 그 내용을 즉시 볼 수 있다.
+
+  - `Weakly ordered` : 하나의 프로세서가 메모리의 내용을 변경하면 다른 모든 프로세서가 그 내용을 볼 수 있는 것이 보장되지 않는다.
+
+- `Memory barriers` (memory fences) : 메모리에서 어떤 변화가 발생했을 때, **이것을 propagated 되도록 하는 instruction** (strongly ordered 모델이 되도록 만들어 주는 것)
+
+  - instructions that can force any changes in memory to be propagated
+
+  - **모든 load 와 store 동작이 이후 load 와 store 동작 전에 완벽하게 끝나도록 하는 것** (ensures that all loads and stores are completed before any subsequent load or store operations)
+
+```
+(ex)
+// Data
+boolean flag = false;
+int x = 0;
+
+// Thread 1
+while (!flag)
+  memory barrier();
+print x;
+
+// Thread 2
+x = 100;
+memory barrier();
+flag = true;
+```
+
+- thread 1 에서 memory barrier() 를 실행하면 flag 값을 완전히 loading 해야 print x 를 할 수 있다.
+
+  - flag 값을 완벽하게 읽어와서 true, false 를 판단하는 것 (flag 를 읽어오기 전에 print x 를 하는 동작이 일어나지 않음)
+
+- thread 2 에서도 memory barrier() 를 통해 x = 100 으로 바뀌어야지 flag 가 true 로 바뀌는 동작을 한다. (x = 100 이 되기 전 flag 가 true 로 되는 동작이 일어나지 않음)
+
+---
+
+### Hardware Instructions
+
+- **to test and modify the content of a word** or to **swap the contents of two words** `atomically` that is, as one `uninterruptible` unit
+
+  - word 의 내용을 **test 하고 modify** 하거나 두 개의 words 의 내용을 **바꾸는 동작**을 수행할 때, `atomically` 수행하도록 만드는 instruction (몇 단계에 걸쳐 수행되야하는 작업)
+
+  - `atomic 하게 동작`하는 것 : 명령어가 `중간에 방해받지 않고 `시작부터 끝까지 실행이 완벽히 끝나도록 하는 것
+
+    - 사이사이 다른 명령어가 실행되지 않도록 하고, 연속해서 동작하여 끝내도록 하는 방식
+
+```
+(ex) Conceptual instruction : test and set()
+// 서로 다른 코어에서 실행되면 parallel 하게 수행되면 interleaving 으로 문제가 발생했었다.
+// 서로 다른 코어에서 동작하더라도 명령어가 interrupt 되지 않고 연속적으로 수행되어야한다.
+// 공유하는 데이터에 대해 코어가 달라도 sequential 하게 동작해야한다.
+
+boolean test_and_set(boolean *target){
+  boolean rv = *target;
+  *target = true;
+  return rv;
+}
+
+do{
+  while(test_and_set(&lock))
+    ; / *do nothing */
+      /* critical section */
+    lock = false;
+      /* remainder section */
+} while (true);
+```
+
+- target 을 입력으로 받아서 rv 에 저장을 해두고 target 을 true 로 만들고 입력으로 받은 target (rv) 을 return
+
+- true 인 동안 while 에 계속 머무르고, loop 를 빠져나오면 critical section 에 들어가고 exit 해서 critical section 에서 빠져나오면 lock 을 false 로 세팅하고 remainder section 을 진행한다.
+
+  - 처음 lock 이 false 이면 while 문을 빠져나와 바로 critical section 에 접근할 수 있다. (입력받은 target 을 return 하므로)
+
+  - 그 다음 target 은 true 가 됐기 때문에 다른 프로세스 또는 스레드가 test_and_set 을 실행하더라도 while 을 빠져나오지 못하고 entry 에서 대기를 한다.
+
+  - 그리고 처음 critical section 에 접근한 프로세스 또는 스레드가 critical section 을 빠져나오면서 lock 을 false 로 만들어주니까 다른 프로세스나 스레드가 test_and_set 명령어에 의해 false 를 받아 while 문을 나오고 critical section 으로 접근 가능하다.
+
+---
+
+```
+(ex) Conceptual instruction : compare and swap()
+
+int compare_and_swap(int *value, int expected, int new_value){
+  int temp = *value;
+  if(*value == expected)
+    *value = new_value;
+  return temp;
+}
+
+while(true){
+  while(compare_and_swap(&lock, 0, 1) != 0)
+    ; /* do nothing */
+    /* critical section */
+  lock = 0;
+    /* remainder section */
+}
+
+// satisfying mutual - exclusion
+// not satisfying bounded - waiting
+
+
+```
+
+- 입력으로 3 개의 파라마터를 받는다.
+
+  - value 를 temp 에 저장하고 value 와 expected 가 같으면 value 에 new_value 를 assign 하고 temp 를 return 한다.
+
+    - 첫 번째 value 값을 return 하고, 1, 2 번 값이 같으면 new_value 를 value 에 주는 것
+
+- lock 이 처음에 false 였으면 while 을 빠져나와 critical section 으로 접근 가능하고, lock 은 0 (false) 이므로 new_value 1 (true) 가 된다.
+
+  - 첫 번째 프로세스나 스레드가 critical section 에 진입한 후 그 이후 프로세스나 스레드가 critical section 에 접근하지 못한다. (lock 이 true 이기 때문에)
+
+  - 첫 번째 프로세스가 스레드가 critical section 에 exit 한 후 lock 이 0 (false) 가 되면 기다리던 프로세스나 스레드 들이 false 가 된 lock 을 받아 while 문을 나오고 critical section 에 접근한다.
+
+- **하나의 프로세스나 스레드가 critical section 에 접근하고 나머지는 밖에서 대기**하기 때문에 `mutual - exclusion` 을 만족한다.
+
+  - 하지만 `bounded - waiting` 은 만족하지 못한다.
+
+```
+// satisfying mutual - exclusion and bounded - waiting
+// n 개의 프로세스 또는 스레드가 있을 때 waiting 이라고 하는 boolean array 선언 후 false 로 초기화
+boolean waiting[n]; // initialized to false
+int lock;           // initialized to 0
+
+// 프로세스 i 에 대한
+while(true){
+  waiting[i] = true;
+  key = 1;
+
+  while(waiting[i] && key == 1)
+    // key = lock
+    key = compare_and_swap(&lock, 0, 1); // lock = 1
+
+  waiting[i] = false;
+    /* critical section */
+
+  j = (i + 1) % n; // next to i
+
+  while((j != i) && !waiting[j])
+    j = (j + 1) % n;
+
+  if(j == i)
+    lock = 0;
+  else
+    waiting[j] = false;
+
+  /* remainder section */
+}
+```
+
+- false 로 초기화된 waiting 배열을 프로세스 i 에 대해 true 로 바꿔주고 key 값을 1 로 설정한다.
+
+- waiting[i] && key == 1 이 true 가 돼서 while 루프 안으로 들어오고 compare_and_swap 을 실행해서 key 에는 lock 이 assign 된다.
+
+  - 처음 lock 은 0 이기 때문에 key 도 0 이 되어 while 문을 빠져나올 수 있다. 이후에 진입한 프로세스의 경우에는 compare_and_swap 을 실행한 뒤 lock 이 1 로 바뀐 상태이기 때문에 key 가 1 이 되어서 while 에서 빠져나오지 못하고 루프 안에 갇혀있게 된다.
+
+- 처음에 빠져나온 프로세스나 스레드는 waiting[i] 를 false 로 설정하고 critical section 으로 들어간다.
+
+  - 프로세스 i 의 waiting 이 false 가 되었으니 waiting 하고 있지 않다고 한 것
+
+- critical section 을 빠져나온 후 j 값을 찾는다. (i + 1 은 프로세스 i 의 다음 프로세스)
+
+  - 다음 프로세스에 대해 n 의 모듈러 값을 찾고 그 값을 j 로 할당
+
+- j 가 i 와 같지 않고 waiting[j] 가 false 이면 (기다리고 있지 않으면) 조건을 만족한다.
+
+  - while 에 들어오면 j 를 1 씩 증가시키는 모듈러 연산을 하는데
+
+    - j 와 i 가 같아지거나, waiting 이 true 가 되는 경우 루프를 빠져나올 수 있다.
+
+- `j 가 i 와 같아져서 빠져나온 경우` : 다음에 있는 모든 프로세스와 비교를 했는데 결국 자기 자신 차례에 올 동안 while 을 빠져나가지 못했다는 뜻.
+
+  - 한 바퀴 돌아서 결국 자기 자신 까지 온 것
+
+  - lock 을 0 으로 세팅한다.
+
+    - **critical section 에 접근할 특정 프로세스를 못 찾은 것이기 때문에 lock 을 0 으로 세팅해서 먼저 compare_and_swap 을 실행한 프로세스가 loop 를 빠져나올 수 있게 하는 것** (아무나 기회)
+
+- `waiting 이 true 가 되어서 빠져나오는 경우` : i 다음 프로세스들을 조사하다가 프로세스가 while 문에서 오래 기다려서 waiting 이 true 가 된 경우이다.
+
+  - **특정 프로세스를 찾아 false 로 만들어 줌 으로써 특정 프로세스를 critical section 에 접근할 수 있도록 해준 것.**
+
+  - waiting 을 false 로 세팅한다. 프로세스 i 가 프로세스 j 의 waiting 을 false 로 만들어 주면서 위의 while 문에 묶여있던 프로세스 j 를 탈출 시키고 critical section 에 접근하도록 함.
+
+  - `bounded - waiting 조건이 만족`되는 것
+
+---
+
+### Atomic Variables
+
+- `Atomic Variables` : int 나 boolean 같은 `기본적인 data type `에 대해 `atomic operation 을 제공하는 variable`
+
+  - **provides atomic operations on basic data types such as integers and booleans**
+
+```
+(ex) sequence 를 atomic integer 라 할 때,
+
+increment(&sequence);
+
+void increment(atomic_int *v){
+  int temp;
+  do{
+    temp = *v;
+  }
+  while(temp != compare_and_swap(v, temp, temp+1));
+}
+```
+
+- increment 함수에서 파라미터를 atomic_int \*v 로 정의하고
+
+- do 에서 atomic_int \*v 를 temp 에 assign 하고 조건이 만족하면 계속해서 수행한다.
+
+  - compare_and_swap 명령어를 통해 v, temp, temp + 1 을 넣는다.
+
+  - v 와 temp 가 서로 같으면 v 에 temp + 1 을 assign 하고 원래의 v 값을 return 한다.
+
+  - 원래의 v 와 temp 가 같지 않으면 while 루프를 돌게 된다.
+
+- 첫 번째 섹션에서만 while 문을 통과하고 두 번째 이후 섹션부터는 v 는 temp + 1 로 temp 와 달라져서 while 에 계속 머물러 있게 된다.
+
+- `한계` : atomic variable 의 경우 `모든 상황에서 race condition 을 해결할 수 있는 해결책은 아니다`.
+
+  - (ex) bounded - buffer problem (producer - consumer)
+
+  - bounded - buffer 인 경우 크기가 유한해서 consumer 가 데이터를 더 빨리 사용해서 empty 될 경우
+
+  - comsumer 2 개가 동시에 실행돼어 버퍼가 차기를 기다릴 때,
+
+  - producer 가 하나의 item 만 생성해서 버퍼에 넣으면 두 consumer 는 buffer 를 계속 보고 있다가 buffer 가 생기는 순간 consumer 는 데이터를 사용한다.
+
+  - 이 때, consumer 가 각 코어에서 실행되고 있고, 위의 코드를 사용하면 both consumers could exit their while loops
+
+  - 실제 데이터는 하나 밖에 없어서 both consumer 가 빠져나오는 것은 옳지 않다.
+
+---
+
+## 6-5. Mutex Locks
