@@ -35,3 +35,9 @@
   - Hardware support
 
   - Synchronization Tools (Mutex lock, Semaphore, Monitor)
+
+- **Week 10 - Deadlock, starvation, Linux practice: multiple processing and threads synchronization**
+
+  - [ch 7. Synchronization examples](https://github.com/jjaehwi/2023_OS/blob/main/Week_10/article.md)
+
+  - ch 8. Deadlock
