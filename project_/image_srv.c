@@ -46,26 +46,42 @@ int main(int argc, char const *argv[])
     // Receive packets and write to file
     int total_size = 0;
     int expected_packet_size = BUF_SIZE;
-    time_t t = time(NULL);
-    struct tm tm = *localtime(&t);
-    sprintf(filename, "%d-%02d-%02d_%02d-%02d-%02d.png", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-    fp = fopen(filename, "wb");
-
-    while (total_size < 4000000)
+    time_t t;
+    struct tm tm;
+    while (1)
     {
-        if ((valread = recvfrom(server_fd, buffer, BUF_SIZE, 0, (struct sockaddr *)&address, &addrlen)) < 0)
+        t = time(NULL);
+        tm = *localtime(&t);
+        sprintf(filename, "%d-%02d-%02d_%02d-%02d-%02d.JPG", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+        fp = fopen(filename, "wb");
+        if (!fp)
         {
-            perror("recvfrom failed");
+            perror("fopen failed");
             exit(EXIT_FAILURE);
         }
 
-        total_size += valread;
-        fwrite(buffer, sizeof(char), valread, fp);
-    }
+        total_size = 0;
+        while (total_size < 4000000)
+        {
+            if ((valread = recvfrom(server_fd, buffer, BUF_SIZE, 0, (struct sockaddr *)&address, &addrlen)) < 0)
+            {
+                perror("recvfrom failed");
+                exit(EXIT_FAILURE);
+            }
 
-    fclose(fp);
-    printf("Image received and written to %s\n", filename);
+            total_size += valread;
+            fwrite(buffer, sizeof(char), valread, fp);
+
+            if (valread < expected_packet_size)
+            {
+                break;
+            }
+        }
+
+        fclose(fp);
+        printf("Image received and written to %s\n", filename);
+    }
 
     close(server_fd);
     return 0;
