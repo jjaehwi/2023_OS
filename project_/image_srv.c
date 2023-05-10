@@ -3,8 +3,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <time.h>
 
-#define PORT 8080
+#define PORT 9001
 #define BUF_SIZE 1024
 
 int main(int argc, char const *argv[])
@@ -14,7 +15,7 @@ int main(int argc, char const *argv[])
     int opt = 1;
     int addrlen = sizeof(address);
     char buffer[BUF_SIZE] = {0};
-    char *filename = "testIMG.jpg";
+    char filename[50];
     FILE *fp;
 
     // Create server socket
@@ -45,21 +46,13 @@ int main(int argc, char const *argv[])
     // Receive packets and write to file
     int total_size = 0;
     int expected_packet_size = BUF_SIZE;
-    while (total_size < expected_packet_size)
-    {
-        if ((valread = recvfrom(server_fd, buffer, expected_packet_size, 0, (struct sockaddr *)&address, &addrlen)) < 0)
-        {
-            perror("recvfrom failed");
-            exit(EXIT_FAILURE);
-        }
-
-        total_size += valread;
-    }
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    sprintf(filename, "%d-%02d-%02d_%02d-%02d-%02d.png", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
     fp = fopen(filename, "wb");
-    fwrite(buffer, sizeof(char), total_size, fp);
 
-    while (total_size < 60000)
+    while (total_size < 4000000)
     {
         if ((valread = recvfrom(server_fd, buffer, BUF_SIZE, 0, (struct sockaddr *)&address, &addrlen)) < 0)
         {
