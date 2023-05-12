@@ -40,4 +40,4 @@
 
   - [ch 7. Synchronization examples](https://github.com/jjaehwi/2023_OS/blob/main/Week10/article.md)
 
-  - ch 8. Deadlock
+  - [ch 8. Deadlock](https://github.com/jjaehwi/2023_OS/blob/main/Week10/article2.md)
