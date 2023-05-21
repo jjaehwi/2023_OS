@@ -41,3 +41,17 @@
   - [ch 7. Synchronization examples](https://github.com/jjaehwi/2023_OS/blob/main/Week10/article.md)
 
   - [ch 8. Deadlock](https://github.com/jjaehwi/2023_OS/blob/main/Week10/article2.md)
+
+- Week 11 - Memory management : Memory allocation
+
+  - ch 9. Main Memory
+
+    - [Background](https://github.com/jjaehwi/2023_OS/blob/main/Week11/article.md)
+
+    - [Contiguous Allocation](https://github.com/jjaehwi/2023_OS/blob/main/Week11/article2.md)
+
+      - memory allocation, fragmentation
+
+    - Paging
+
+    - Page table and swapping
